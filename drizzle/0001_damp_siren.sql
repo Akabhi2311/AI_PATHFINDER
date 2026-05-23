@@ -1,0 +1,1 @@
+ALTER TABLE "aiChatHistory" ADD COLUMN "createdBy" text NOT NULL;
