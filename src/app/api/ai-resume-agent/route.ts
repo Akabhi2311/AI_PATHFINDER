@@ -17,10 +17,14 @@ import { db } from "@/configs/db";
 
 import { resumeAnalysis } from "@/db/schema";
 
+import { groq } from "@/configs/ai";
+
 export async function POST(
   req: NextRequest
 ) {
+
   try {
+
     console.log("API HIT");
 
     // AUTH
@@ -28,6 +32,7 @@ export async function POST(
       await auth();
 
     if (!userId) {
+
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -46,6 +51,7 @@ export async function POST(
       formData.get("file") as File;
 
     if (!file) {
+
       return NextResponse.json(
         {
           error:
@@ -83,9 +89,13 @@ export async function POST(
     if (
       !fs.existsSync(uploadDir)
     ) {
-      fs.mkdirSync(uploadDir, {
-        recursive: true,
-      });
+
+      fs.mkdirSync(
+        uploadDir,
+        {
+          recursive: true,
+        }
+      );
     }
 
     // SAVE FILE
@@ -115,23 +125,34 @@ export async function POST(
           resolve,
           reject
         ) => {
+
           let text = "";
 
           new PdfReader().parseFileItems(
             filePath,
+
             (
               err,
               item
             ) => {
+
               if (err) {
+
                 reject(err);
-              } else if (!item) {
+
+              } else if (
+                !item
+              ) {
+
                 resolve(text);
+
               } else if (
                 item.text
               ) {
+
                 text +=
-                  item.text + " ";
+                  item.text +
+                  " ";
               }
             }
           );
@@ -142,26 +163,17 @@ export async function POST(
       "PDF EXTRACTION SUCCESS"
     );
 
-    // OLLAMA
-    const ollamaResponse =
-      await fetch(
-        "http://127.0.0.1:11434/api/chat",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+        messages: [
+          {
+            role: "system",
 
-          body: JSON.stringify({
-            model: "phi3:mini",
-
-            messages: [
-              {
-                role: "system",
-
-                content: `
+            content: `
 You are an expert ATS resume analyzer.
 
 Analyze the resume and provide:
@@ -173,32 +185,30 @@ Analyze the resume and provide:
 5. Career suggestions
 
 Keep response concise and structured.
-                `,
-              },
+            `,
+          },
 
-              {
-                role: "user",
+          {
+            role: "user",
 
-                content:
-                  extractedText,
-              },
-            ],
+            content:
+              extractedText,
+          },
+        ],
 
-            stream: false,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    const aiData =
-      await ollamaResponse.json();
+        max_tokens: 800,
+      });
 
     console.log(
-      "OLLAMA SUCCESS"
+      "GROQ SUCCESS"
     );
 
     // AI RESPONSE
     const aiAnalysis =
-      aiData.message?.content ||
+      completion.choices[0]
+        ?.message?.content ||
       "No analysis generated";
 
     // ATS SCORE
@@ -223,6 +233,12 @@ Keep response concise and structured.
       "C++",
       "AI",
       "Git",
+      "Machine Learning",
+      "TensorFlow",
+      "PyTorch",
+      "Docker",
+      "AWS",
+      "TypeScript",
     ].filter((skill) =>
       extractedText
         .toLowerCase()
@@ -233,22 +249,22 @@ Keep response concise and structured.
 
     // DATABASE SAVE
     await db
-      .insert(resumeAnalysis)
+      .insert(
+        resumeAnalysis
+      )
       .values({
-        resumeUrl: fileUrl,
+        resumeUrl:
+          fileUrl,
 
-        aiAnalysis:
+        aiAnalysis,
 
-          aiAnalysis,
-
-        atsScore:
-
-          atsScore,
+        atsScore,
 
         extractedSkills:
           skills.join(", "),
 
-        createdBy: userId,
+        createdBy:
+          userId,
       });
 
     console.log(
@@ -259,17 +275,21 @@ Keep response concise and structured.
     return NextResponse.json({
       success: true,
 
-      resumeUrl: fileUrl,
+      resumeUrl:
+        fileUrl,
 
       extractedText,
 
-      analysis: aiAnalysis,
+      analysis:
+        aiAnalysis,
 
       atsScore,
 
       skills,
     });
+
   } catch (error) {
+
     console.error(
       "FULL ERROR:",
       error

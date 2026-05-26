@@ -11,9 +11,12 @@ import { db } from "@/configs/db";
 
 import { mockInterviews } from "@/db/schema";
 
+import { groq } from "@/configs/ai";
+
 export async function POST(
   req: NextRequest
 ) {
+
   try {
 
     // AUTH
@@ -53,17 +56,6 @@ export async function POST(
         }
       );
     }
-
-    // TIMEOUT CONTROLLER
-    const controller =
-      new AbortController();
-
-    const timeout =
-      setTimeout(
-        () =>
-          controller.abort(),
-        180000
-      );
 
     // PROMPT
     const prompt = `
@@ -113,76 +105,56 @@ EXPERIENCE LEVEL:
 ${level}
 `;
 
-    // OLLAMA REQUEST
-    const ollamaResponse =
-      await fetch(
-        "http://127.0.0.1:11434/api/generate",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
+        messages: [
+          {
+            role: "system",
+
+            content:
+              "You are an elite technical interviewer from top tech companies.",
           },
 
-          signal:
-            controller.signal,
+          {
+            role: "user",
 
-          body: JSON.stringify({
-            model:
-              "phi3:mini",
+            content:
+              prompt,
+          },
+        ],
 
-            prompt,
+        temperature: 0.7,
 
-            stream: false,
+        max_tokens: 1200,
+      });
 
-            options: {
-              temperature: 0.7,
-
-              num_predict: 1200,
-            },
-          }),
-        }
-      );
-
-    clearTimeout(timeout);
-
-    // OLLAMA ERROR
-    if (!ollamaResponse.ok) {
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to connect to Ollama",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
-
-    // RESPONSE
-    const aiData =
-      await ollamaResponse.json();
-
+    // AI RESPONSE
     const interviewGuide =
-      aiData.response ||
+      completion.choices[0]
+        ?.message?.content ||
       "No interview guide generated";
 
-    // SAVE TO DB
+    // SAVE TO DATABASE
     await db
       .insert(
         mockInterviews
       )
       .values({
         role,
+
         level,
+
         interviewGuide,
+
         createdBy:
           userId,
       });
 
-    // RETURN
+    // RESPONSE
     return NextResponse.json({
       interviewGuide,
     });

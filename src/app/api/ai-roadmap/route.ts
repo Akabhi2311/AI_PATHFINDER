@@ -5,10 +5,37 @@ import {
   NextResponse,
 } from "next/server";
 
+import { auth } from "@clerk/nextjs/server";
+
+import { db } from "@/configs/db";
+
+import { roadmaps } from "@/db/schema";
+
+import { groq } from "@/configs/ai";
+
 export async function POST(
   req: NextRequest
 ) {
+
   try {
+
+    // AUTH
+    const { userId } =
+      await auth();
+
+    if (!userId) {
+
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // BODY
     const body =
       await req.json();
 
@@ -18,6 +45,7 @@ export async function POST(
     } = body;
 
     if (!role || !skills) {
+
       return NextResponse.json(
         {
           error:
@@ -29,26 +57,17 @@ export async function POST(
       );
     }
 
-    // OLLAMA REQUEST
-    const ollamaResponse =
-      await fetch(
-        "http://127.0.0.1:11434/api/chat",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+        messages: [
+          {
+            role: "system",
 
-          body: JSON.stringify({
-            model: "phi3:mini",
-
-            messages: [
-              {
-                role: "system",
-
-                content: `
+            content: `
 You are an elite AI career mentor.
 
 Generate a detailed roadmap for the user.
@@ -63,40 +82,61 @@ Include:
 7. Certifications
 8. Free Learning Resources
 
-Keep response highly structured.
-                `,
-              },
+Keep response highly structured and concise.
+            `,
+          },
 
-              {
-                role: "user",
+          {
+            role: "user",
 
-                content: `
+            content: `
 Target Role:
 ${role}
 
 Current Skills:
 ${skills}
-                `,
-              },
-            ],
+            `,
+          },
+        ],
 
-            stream: false,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    const aiData =
-      await ollamaResponse.json();
+        max_tokens: 1200,
+      });
 
+    // AI RESPONSE
     const roadmap =
-      aiData.message?.content ||
+      completion.choices[0]
+        ?.message?.content ||
       "No roadmap generated";
 
+    // SAVE TO DATABASE
+    await db
+      .insert(
+        roadmaps
+      )
+      .values({
+        role,
+
+        skills,
+
+        roadmap,
+
+        createdBy:
+          userId,
+      });
+
+    // RESPONSE
     return NextResponse.json({
       roadmap,
     });
+
   } catch (error) {
-    console.log(error);
+
+    console.log(
+      "ROADMAP ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {

@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 import {
   NextRequest,
   NextResponse,
@@ -9,11 +11,12 @@ import { db } from "@/configs/db";
 
 import { weeklyPlanners } from "@/db/schema";
 
-export const runtime = "nodejs";
+import { groq } from "@/configs/ai";
 
 export async function POST(
   req: NextRequest
 ) {
+
   try {
 
     // AUTH
@@ -32,6 +35,7 @@ export async function POST(
       );
     }
 
+    // BODY
     const body =
       await req.json();
 
@@ -56,6 +60,7 @@ export async function POST(
       );
     }
 
+    // PROMPT
     const prompt = `
 You are an expert AI career coach.
 
@@ -112,54 +117,45 @@ OUTPUT FORMAT:
 - rest
 `;
 
-    // OLLAMA
-    const response =
-      await fetch(
-        "http://127.0.0.1:11434/api/generate",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
+        messages: [
+          {
+            role: "system",
+
+            content:
+              "You are an expert AI career coach and productivity mentor.",
           },
 
-          body: JSON.stringify({
-            model:
-              "phi3:mini",
+          {
+            role: "user",
 
-            prompt,
+            content:
+              prompt,
+          },
+        ],
 
-            stream: false,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    if (!response.ok) {
+        max_tokens: 1200,
+      });
 
-      return NextResponse.json(
-        {
-          error:
-            "Failed to connect to Ollama",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
-
-    const data =
-      await response.json();
-
+    // AI RESPONSE
     const planner =
-      data?.response;
+      completion.choices[0]
+        ?.message?.content ||
+      "";
 
     if (!planner) {
 
       return NextResponse.json(
         {
           error:
-            "No planner returned from Ollama",
+            "No planner generated",
         },
         {
           status: 500,
@@ -174,12 +170,16 @@ OUTPUT FORMAT:
       )
       .values({
         role,
+
         roadmap,
+
         planner,
+
         createdBy:
           userId,
       });
 
+    // RESPONSE
     return NextResponse.json({
       planner,
     });
@@ -194,7 +194,9 @@ OUTPUT FORMAT:
     return NextResponse.json(
       {
         error:
-          "Failed to generate planner",
+          error instanceof Error
+            ? error.message
+            : "Failed to generate planner",
       },
       {
         status: 500,

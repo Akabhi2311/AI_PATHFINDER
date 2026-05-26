@@ -17,6 +17,8 @@ import { db } from "@/configs/db";
 
 import { skillGapReports } from "@/db/schema";
 
+import { groq } from "@/configs/ai";
+
 const COMMON_SKILLS = [
   "React",
   "Next.js",
@@ -41,6 +43,7 @@ const COMMON_SKILLS = [
 export async function POST(
   req: NextRequest
 ) {
+
   try {
 
     // AUTH
@@ -59,6 +62,7 @@ export async function POST(
       );
     }
 
+    // FORM DATA
     const formData =
       await req.formData();
 
@@ -124,6 +128,7 @@ export async function POST(
           uploadDir
         )
       ) {
+
         fs.mkdirSync(
           uploadDir,
           {
@@ -143,7 +148,7 @@ export async function POST(
         buffer
       );
 
-      // PDF TEXT EXTRACTION
+      // PDF EXTRACTION
       const extractedText =
         await new Promise<string>(
           (
@@ -161,22 +166,24 @@ export async function POST(
                 item
               ) => {
 
-                if (err)
+                if (err) {
+
                   reject(err);
 
-                else if (
+                } else if (
                   !item
-                )
-                  resolve(
-                    text
-                  );
+                ) {
 
-                else if (
+                  resolve(text);
+
+                } else if (
                   item.text
-                )
+                ) {
+
                   text +=
                     item.text +
                     " ";
+                }
               }
             );
           }
@@ -193,27 +200,17 @@ export async function POST(
         );
     }
 
-    // OLLAMA
-    const ollamaResponse =
-      await fetch(
-        "http://127.0.0.1:11434/api/chat",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+        messages: [
+          {
+            role: "system",
 
-          body: JSON.stringify({
-            model:
-              "phi3:mini",
-
-            messages: [
-              {
-                role: "system",
-
-                content: `
+            content: `
 You are an elite AI career coach.
 
 Analyze:
@@ -239,13 +236,13 @@ PROJECTS:
 
 JOB_PREP:
 ...
-                `,
-              },
+            `,
+          },
 
-              {
-                role: "user",
+          {
+            role: "user",
 
-                content: `
+            content: `
 Target Role:
 ${targetRole}
 
@@ -253,20 +250,19 @@ Current Skills:
 ${extractedSkills.join(
   ", "
 )}
-                `,
-              },
-            ],
+            `,
+          },
+        ],
 
-            stream: false,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    const aiData =
-      await ollamaResponse.json();
+        max_tokens: 1200,
+      });
 
+    // AI RESPONSE
     const aiText =
-      aiData.message?.content ||
+      completion.choices[0]
+        ?.message?.content ||
       "";
 
     // PARSE OUTPUT
@@ -280,33 +276,53 @@ ${extractedSkills.join(
         /ROADMAP:([\s\S]*?)PROJECTS:/
       );
 
+    const projectsMatch =
+      aiText.match(
+        /PROJECTS:([\s\S]*?)JOB_PREP:/
+      );
+
+    const jobPrepMatch =
+      aiText.match(
+        /JOB_PREP:([\s\S]*)/
+      );
+
     // DATABASE SAVE
     await db
-  .insert(
-    skillGapReports
-  )
-  .values({
-    targetRole,
+      .insert(
+        skillGapReports
+      )
+      .values({
+        targetRole,
 
-    currentSkills:
-      extractedSkills.join(
-        ", "
-      ),
+        currentSkills:
+          extractedSkills.join(
+            ", "
+          ),
 
-    missingSkills:
-      missingSkillsMatch?.[1] ||
-      "",
+        missingSkills:
+          missingSkillsMatch?.[1] ||
+          "",
 
-    roadmap:
-      roadmapMatch?.[1] ||
-      "",
+        roadmap:
+          roadmapMatch?.[1] ||
+          "",
 
-    createdBy:
-      userId,
-  });
+        projects:
+          projectsMatch?.[1] ||
+          "",
 
+        jobPrep:
+          jobPrepMatch?.[1] ||
+          "",
+
+        createdBy:
+          userId,
+      });
+
+    // RESPONSE
     return NextResponse.json({
-      analysis: aiText,
+      analysis:
+        aiText,
 
       currentSkills:
         extractedSkills,
@@ -314,23 +330,36 @@ ${extractedSkills.join(
       missingSkills:
         missingSkillsMatch?.[1]
           ?.split(",")
-          .map((s:any) =>
+          .map((s: any) =>
             s.trim()
           ) || [],
 
       roadmap:
         roadmapMatch?.[1] ||
         "",
+
+      projects:
+        projectsMatch?.[1] ||
+        "",
+
+      jobPrep:
+        jobPrepMatch?.[1] ||
+        "",
     });
 
   } catch (error) {
 
-    console.log(error);
+    console.log(
+      "SKILL GAP ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
         error:
-          "Skill gap analysis failed",
+          error instanceof Error
+            ? error.message
+            : "Skill gap analysis failed",
       },
       {
         status: 500,

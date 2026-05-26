@@ -1,14 +1,41 @@
+export const runtime = "nodejs";
+
 import {
   NextRequest,
   NextResponse,
 } from "next/server";
 
-export const runtime = "nodejs";
+import { auth } from "@clerk/nextjs/server";
+
+import { db } from "@/configs/db";
+
+import { roadmaps } from "@/db/schema";
+
+import { groq } from "@/configs/ai";
 
 export async function POST(
   req: NextRequest
 ) {
+
   try {
+
+    // AUTH
+    const { userId } =
+      await auth();
+
+    if (!userId) {
+
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // BODY
     const body =
       await req.json();
 
@@ -18,6 +45,7 @@ export async function POST(
     } = body;
 
     if (!role || !level) {
+
       return NextResponse.json(
         {
           error:
@@ -29,6 +57,7 @@ export async function POST(
       );
     }
 
+    // PROMPT
     const prompt = `
 Generate a practical and modern career roadmap for becoming a ${level} ${role}.
 
@@ -94,49 +123,62 @@ IMPORTANT:
 - Do NOT add explanations outside markdown.
 `;
 
-    const response =
-      await fetch(
-        "http://127.0.0.1:11434/api/generate",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
+        messages: [
+          {
+            role: "system",
+
+            content:
+              "You are an elite AI career mentor and roadmap generator.",
           },
 
-          body: JSON.stringify({
-            model: "phi3:mini",
+          {
+            role: "user",
 
-            prompt,
+            content:
+              prompt,
+          },
+        ],
 
-            stream: false,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          error:
-            "Failed to connect to Ollama",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+        max_tokens: 1400,
+      });
 
-    const data =
-      await response.json();
-
+    // AI RESPONSE
     const roadmap =
-      data?.response || "";
+      completion.choices[0]
+        ?.message?.content ||
+      "No roadmap generated";
 
+    // SAVE TO DATABASE
+    await db
+      .insert(
+        roadmaps
+      )
+      .values({
+        role,
+
+        level,
+
+        roadmap,
+
+        createdBy:
+          userId,
+      });
+
+    // RESPONSE
     return NextResponse.json({
       roadmap,
     });
+
   } catch (error) {
+
     console.log(
       "ROADMAP ERROR:",
       error
@@ -145,7 +187,9 @@ IMPORTANT:
     return NextResponse.json(
       {
         error:
-          "Failed to generate roadmap",
+          error instanceof Error
+            ? error.message
+            : "Failed to generate roadmap",
       },
       {
         status: 500,

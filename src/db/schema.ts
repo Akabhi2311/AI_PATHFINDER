@@ -3,26 +3,37 @@ import {
   text,
   timestamp,
   uuid,
-  serial,
+  integer,
   boolean,
 } from "drizzle-orm/pg-core";
 
-export const aiChats = pgTable(
-  "ai_chats",
-  {
-    id: serial("id").primaryKey(),
+export const aiChats =
+  pgTable(
+    "ai_chats",
+    {
 
-    chatId: text("chat_id").notNull(),
+      id:
+        integer("id")
+          .primaryKey()
+          .generatedAlwaysAsIdentity(),
 
-    role: text("role").notNull(),
+      chatId:
+        text("chat_id"),
 
-    message: text("message").notNull(),
+      role:
+        text("role"),
 
-    createdBy: text("created_by").notNull(),
+      message:
+        text("message"),
 
-    createdAt: timestamp("created_at").defaultNow(),
-  }
-);
+      createdBy:
+        text("created_by"),
+
+      createdAt:
+        timestamp("created_at")
+          .defaultNow(),
+    }
+  );
 
 export const resumeAnalysis =
   pgTable(
@@ -57,25 +68,35 @@ export const resumeAnalysis =
   );
 
   export const roadmaps =
-  pgTable("roadmaps", {
-    id: uuid("id")
-      .defaultRandom()
-      .primaryKey(),
+  pgTable(
+    "roadmaps",
+    {
 
-    role: text("role"),
+      id:
+        integer("id")
+          .primaryKey()
+          .generatedAlwaysAsIdentity(),
 
-    level: text("level"),
+      role:
+        text("role"),
 
-    roadmap: text("roadmap"),
+      level:
+        text("level"),
 
-    createdBy: text(
-      "created_by"
-    ),
+      skills:
+        text("skills"),
 
-    createdAt: timestamp(
-      "created_at"
-    ).defaultNow(),
-  });
+      roadmap:
+        text("roadmap"),
+
+      createdBy:
+        text("created_by"),
+
+      createdAt:
+        timestamp("created_at")
+          .defaultNow(),
+    }
+  );
 
   export const roadmapProgress =
   pgTable(
@@ -111,24 +132,21 @@ export const resumeAnalysis =
     {
 
       id:
-        serial("id")
-          .primaryKey(),
+        integer("id")
+          .primaryKey()
+          .generatedAlwaysAsIdentity(),
 
       role:
-        text("role")
-          .notNull(),
+        text("role"),
 
       roadmap:
-        text("roadmap")
-          .notNull(),
+        text("roadmap"),
 
       planner:
-        text("planner")
-          .notNull(),
+        text("planner"),
 
       createdBy:
-        text("created_by")
-          .notNull(),
+        text("created_by"),
 
       createdAt:
         timestamp("created_at")
@@ -142,16 +160,15 @@ export const skillGapReports =
     {
 
       id:
-        serial("id")
-          .primaryKey(),
+        integer("id")
+          .primaryKey()
+          .generatedAlwaysAsIdentity(),
 
       targetRole:
-        text("target_role")
-          .notNull(),
+        text("target_role"),
 
       currentSkills:
-        text("current_skills")
-          .notNull(),
+        text("current_skills"),
 
       missingSkills:
         text("missing_skills"),
@@ -159,9 +176,14 @@ export const skillGapReports =
       roadmap:
         text("roadmap"),
 
+      projects:
+        text("projects"),
+
+      jobPrep:
+        text("job_prep"),
+
       createdBy:
-        text("created_by")
-          .notNull(),
+        text("created_by"),
 
       createdAt:
         timestamp("created_at")
@@ -175,24 +197,21 @@ export const mockInterviews =
     {
 
       id:
-        serial("id")
-          .primaryKey(),
+        integer("id")
+          .primaryKey()
+          .generatedAlwaysAsIdentity(),
 
       role:
-        text("role")
-          .notNull(),
+        text("role"),
 
       level:
-        text("level")
-          .notNull(),
+        text("level"),
 
       interviewGuide:
-        text("interview_guide")
-          .notNull(),
+        text("interview_guide"),
 
       createdBy:
-        text("created_by")
-          .notNull(),
+        text("created_by"),
 
       createdAt:
         timestamp("created_at")

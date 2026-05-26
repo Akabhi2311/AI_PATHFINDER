@@ -1,20 +1,26 @@
 import {
   NextRequest,
+  NextResponse,
 } from "next/server";
 
 import { auth } from "@clerk/nextjs/server";
 
 import { saveMessage } from "@/lib/chat";
 
+import { groq } from "@/configs/ai";
+
 export async function POST(
   req: NextRequest
 ) {
-  const encoder = new TextEncoder();
 
   try {
-    const { userId } = await auth();
+
+    // AUTH
+    const { userId } =
+      await auth();
 
     if (!userId) {
+
       return new Response(
         "Unauthorized",
         {
@@ -23,127 +29,92 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    // BODY
+    const body =
+      await req.json();
 
+    // SAVE USER MESSAGE
     await saveMessage({
-      chatId: body.chatid,
+      chatId:
+        body.chatId,
 
       role: "user",
 
-      message: body.message,
+      message:
+        body.message,
 
-      createdBy: userId,
+      createdBy:
+        userId,
     });
 
-    const ollamaResponse =
-      await fetch(
-        "http://127.0.0.1:11434/api/chat",
-        {
-          method: "POST",
+    // GROQ AI
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.1-8b-instant",
 
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
+        messages: [
+          {
+            role: "system",
 
-          body: JSON.stringify({
-            model: "phi3:mini",
-
-            messages: [
-              {
-                role: "system",
-
-                content: `
+            content: `
 You are a professional AI Career Coach.
 
 Rules:
-- Answer ONLY career-related questions.
-- Keep responses concise.
-- Maximum 120 words.
-- Give practical advice only.
-                `,
-              },
+- Answer ONLY career-related questions
+- Keep responses concise
+- Maximum 120 words
+- Give practical advice only
+- Be professional and motivating
+            `,
+          },
 
-              {
-                role: "user",
+          {
+            role: "user",
 
-                content: body.message,
-              },
-            ],
+            content:
+              body.message,
+          },
+        ],
 
-            stream: true,
-          }),
-        }
-      );
+        temperature: 0.7,
 
-    const reader =
-      ollamaResponse.body?.getReader();
+        max_tokens: 300,
+      });
 
-    let fullResponse = "";
+    // AI RESPONSE
+    const aiResponse =
+      completion.choices[0]
+        ?.message?.content ||
+      "No response generated";
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        if (!reader) return;
+    // SAVE AI MESSAGE
+    await saveMessage({
+      chatId:
+        body.chatId,
 
-        while (true) {
-          const {
-            done,
-            value,
-          } = await reader.read();
+      role:
+        "assistant",
 
-          if (done) break;
+      message:
+        aiResponse,
 
-          const chunk =
-            new TextDecoder().decode(
-              value
-            );
-
-          const lines = chunk
-            .split("\n")
-            .filter(Boolean);
-
-          for (const line of lines) {
-            try {
-              const parsed =
-                JSON.parse(line);
-
-              const content =
-                parsed.message
-                  ?.content || "";
-
-              fullResponse += content;
-
-              controller.enqueue(
-                encoder.encode(content)
-              );
-            } catch (err) {
-              console.log(err);
-            }
-          }
-        }
-
-        await saveMessage({
-          chatId: body.chatid,
-
-          role: "assistant",
-
-          message: fullResponse,
-
-          createdBy: userId,
-        });
-
-        controller.close();
-      },
+      createdBy:
+        userId,
     });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type":
-          "text/plain; charset=utf-8",
-      },
+    // RETURN RESPONSE
+    return NextResponse.json({
+      message:
+        aiResponse,
     });
+
   } catch (error) {
-    console.log(error);
+
+    console.log(
+      "AI CHAT ERROR:",
+      error
+    );
 
     return new Response(
       "AI Error",
